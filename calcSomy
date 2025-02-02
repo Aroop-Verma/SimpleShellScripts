@@ -1,0 +1,21 @@
+#!/bin/bash
+
+
+
+for i in $(ls *);
+do
+    base_name=${i%%_dp_analysis}
+    echo -e $base_name $(cat < $i | awk '{dp_sum+=$2}END{print dp_sum, NR-1, dp_sum/(NR-1)}') >> sample_analysis_info
+    mean_dp_sum=$(cat < $i | awk '{dp_sum+=$2}END{print dp_sum/(NR-1)}')
+    tail +2 $i | awk -v mean="$mean_dp_sum" -v OFS=$"\t" 'BEGIN{print "chr", "raw_dp/mean", "2*raw_dp/mean"}{print $1, $2/mean, ($2/mean)*2}' > ${base_name}_dp_div_mean
+done
+
+cat < $(ls *_dp_div_mean | head -n 1) | cut -f1 >> concat_file
+
+for i in $(ls *_dp_div_mean);
+do
+    base_name_sample=${i%%_dp_div_mean}
+    tail +2 $i | awk -v sample=$base_name_sample 'BEGIN{print sample}{print $3}' >> ${base_name_sample}_ch_somy
+done
+
+paste concat_file *_ch_somy >> all_sample_ch_somy

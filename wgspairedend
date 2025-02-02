@@ -1,0 +1,127 @@
+#!/bin/bash
+
+
+reference="/home/anupam/aroop/ICMR/samples/reference_ldonovani_genbank/GCA_000227135.2_ASM22713v2_genomic.fna"
+interval_dir="/home/anupam/aroop/ICMR/samples/reference_ldonovani_genbank/"
+
+input_fastq_forward=SRR13707160_1.fastq.gz
+input_fastq_reverse=SRR13707160_2.fastq.gz
+
+base_name=${input_fastq_forward%%_1.fastq.gz}
+
+
+function trimmomatic
+{   
+
+    trimmomatic_base_name=${base_name}.trimmed
+    java -jar /home/anupam/Downloads/Trimmomatic-0.39/trimmomatic-0.39.jar \
+    PE -threads 12 \
+    -summary ${base_name}_trimmomatic_summary \
+    -baseout $trimmomatic_base_name $input_fastq_forward $input_fastq_reverse \
+    ILLUMINACLIP:/home/anupam/Downloads/Trimmomatic-0.39/adapters/TruSeq3-PE.fa:2:3:10 \
+    SLIDINGWINDOW:4:20 \
+    MINLEN:36
+
+}
+
+function alignment
+{
+
+    trimmed_input_file_1P=$(ls | grep 1P$)
+    trimmed_input_file_2P=$(ls | grep 2P$)
+
+    echo "Alignment Initiated"
+    bwa mem -t 10 \
+    -M $reference $trimmed_input_file_1P $trimmed_input_file_2P \
+    > ${base_name}.aligned.sam
+    echo
+
+    rm *.trimmed*
+    
+    echo "----Sorting Sequence Alignment Map File----"
+    java -jar /home/anupam/Downloads/picard.jar SortSam \
+    -I ${base_name}.aligned.sam \
+    -O ${base_name}.aligned.sorted.sam \
+    -SORT_ORDER coordinate
+    echo
+
+    rm ${base_name}.aligned.sam
+
+    echo "----Calculating Alignment Summary Metrics----"
+    java -jar /home/anupam/Downloads/picard.jar CollectAlignmentSummaryMetrics \
+    -R $reference \
+    -I ${base_name}.aligned.sam \
+    -O ${base_name}.alignment_summary_metrics
+    echo
+
+    echo "----Marking Duplicates----"
+    java -jar /home/anupam/Downloads/picard.jar MarkDuplicates \
+    -I ${base_name}.aligned.sorted.sam \
+    -O ${base_name}.aligned.sorted.duplicateMarked.sam \
+    -M ${base_name}.duplicate_metrics
+    echo
+
+    ${base_name}.aligned.sorted.sam
+
+#    echo "----Converting SAM to BAM----"
+#    java -jar /home/anupam/Downloads/picard.jar SamFormatConverter \
+#    -I ${base_name}.aligned.sorted.duplicateMarked.sam \
+#    -O ${base_name}.bam
+#    echo
+
+#    rm *.sam   
+}
+
+
+function samtools_stats
+{
+
+    samtools coverage ${base_name}.bam > ${base_name}_coverage_statistics
+
+    samtools coverage ${base_name}.bam | tail -n +2 | \
+    awk '{coveredbases+=$5;numbases+=$3}END{printf("Total coverage of the sample = %.2f\n", (coveredbases/numbases)*100)}' \
+    >> ${base_name}.SamtoolsCoverage.percentageCoverage
+
+    samtools depth ${base_name}.bam > ${base_name}_depth_statistics
+
+    samtools depth ${base_name}.bam| \
+    awk '{sumofdepth+=$3}END{printf("Average Depth of Sample = %.2f\n" , sumofdepth/NR)}' \
+    >> ${base_name}.SamtoolsDepth.averagedepth 
+
+    samtools flagstat ${base_name}.bam > ${base_name}_flagstats
+
+}
+
+function addReadGroups
+{
+
+    java -jar /home/anupam/Downloads/picard.jar AddOrReplaceReadGroups \
+    -I ${base_name}.bam \
+    -O ReadGroup_${base_name}.bam \
+    -RGLB rglb \
+    -RGPL rgpl \
+    -RGPU rgpu \
+    -RGSM $base_name
+
+}
+
+function GATKHC
+{
+    gatk_hc_input_file=$(ls | grep ^ReadGroup_)
+    
+    gatk BuildBamIndex -I $gatk_hc_input_file
+
+    gatk --java-options "-Xmx12g" HaplotypeCaller \
+    --native-pair-hmm-threads 12 \
+    -R $reference \
+    -L $interval_dir/GCA_000227135.2_ASM22713v2_genomic.bed \
+    -I $gatk_hc_input_file \
+    -O ${gatk_hc_input_file%%.bam}.genomic.vcf
+
+}
+
+trimmomatic
+alignment
+#samtools_stats
+##addReadGroups
+#GATKHC

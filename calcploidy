@@ -1,0 +1,8 @@
+#!/bin/bash
+
+for i in $(ls *_dp_analysis); 
+do
+    sample=${i%%_dp_analysis} 
+    ploidy=$(tail +2 $i | awk '{print $NF}' | awk '{sum+=$1}END{print sum/NR}')
+    echo -e "$sample\t$ploidy" >> samplePloidy
+done

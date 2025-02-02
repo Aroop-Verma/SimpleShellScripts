@@ -1,0 +1,167 @@
+#!/bin/bash
+
+snpEff_annotation_files_dir="./"
+maf_files_dir="./"
+
+declare -a maf_files=$(ls $maf_files_dir | grep .maf)
+declare -a snpEff_annotated_vcf_files=$(ls $snpEff_annotation_files_dir | grep .ann)
+
+
+
+#We will extract First column of MAF file, which contains Gene locus tags
+#Counting the locus tags would give us an idea about how many variants are
+#affect each gene.
+
+for maf in ${maf_files[@]}; 
+do
+    cat < $maf | cut -f1 | tail +3 | sort -n | uniq >> tmpf
+
+    cat < $maf | cut -f1 | tail -n +3 | sort -n \
+    | uniq -c | cut -d' ' -f6,7- | awk '{print $1,$2,$3}' \
+    | tr ' ' '\t' | sort -nr > ${maf%%.maf}.geneCount
+
+done
+
+
+
+#tmpf file contains unique gene locus tags from all MAF files.
+#Counting unique gene locus tags from this list would give us the number
+#of samples a gene is present in. Eg. If a gene has a count of 10, and 
+#our analysis contains 10 samples, that means that gene has been affected
+# by variants in all 10 samples. 
+
+cat < tmpf | sort -n | uniq -c | sort -nr > _commonGenes.txt
+rm tmpf
+
+#We are going to load the gene Ids into an array which we will use in a bit.
+
+declare -a gene_locus_IDs=$(cat < _commonGenes.txt | cut -d' ' -f6,7- | sed 's/^ //g' | awk '{if($1==31)print $NF}')
+
+
+
+#We will extract INFO fields, which contain annotation information,
+#from Annotated VCFs and save them.
+
+for annVcf in ${snpEff_annotated_vcf_files[@]};
+do
+    cat < $snpEff_annotation_files_dir/$annVcf |\
+    grep -v ^# | awk '{print $8}' |\
+    cut -d',' --output-delimiter=$'\n' -f1- |\
+    sed 's/^ANN=//g' > ${annVcf%%.snps.filtered.ann}.INFO
+done
+
+#We are going to load the INFO files into an array and use it next.
+
+declare -a INFO_files=$(ls | grep .INFO)
+
+
+#Now, we are going to start matching gene IDs against INFO fields of our INFO files
+#Through this method we are going to trap ANN records of the query gene, these records
+#contain variant annotation information.
+
+for geneID in ${gene_locus_IDs[@]};
+do
+    for file in ${INFO_files[@]};
+    do
+        cat < $file | grep "$geneID" | \
+        awk -v awk_file=\>$file -F$'\t' 'BEGIN {print awk_file}{print$0}' \
+        >> ${geneID}.INFO.ANN
+    done
+done
+
+
+#Load the files containing extracted annotation fields in an array.
+#We will find unique variants affecting genes. 
+
+declare -a annotation_files_array=$(ls *.INFO.ANN)
+
+for annfile in ${annotation_files_array[@]};
+do
+    cat < $annfile |\
+    grep -v "^>" | sort | uniq | tr '|' '\t' |\
+    sort  >> ${annfile%%_annotation_fields}.unique.variants
+
+    cat < $annfile |\
+    grep -v "^>" | sort | uniq | sort >> tmpfile
+
+    declare -a variant_array=$(cat < tmpfile | grep -o "|[cn].*[A-Z]|" | sed 's/|//g')
+    for variant in ${variant_array[@]};
+    do
+        variant_count=$(cat < $annfile | grep -v "^>" | grep $variant | wc -l)  
+        echo -e "$variant\t$variant_count" >> ${annfile}.unique.variants.count
+    done
+    rm tmpfile
+done
+
+
+
+
+#Extract Missense variants from sample MAF files.
+
+for maf_file in ${maf_files[@]};
+do
+    maf=${maf_file%%.maf}
+    echo "Setting Maf file name to $maf"
+    cat < $maf_file | grep "Missense_Mutation" |\
+    cut --output-delimiter=$'\t' \
+    -f1,5-7,9-10,12-13,35,36,51,52-54,64,93 \
+    > ${maf}_missense_variant_information
+
+    cat < ${maf}_missense_variant_information \
+    | awk -F$'\t' \
+    'BEGIN {print "Hugo_Symbol","Chromosome","Start_Position","End_Position","Variant_Classification","Variant_Type","Reference","Alternate","HGVSc","HGVSp","Consequence","cDNA_position","CDS_position","Protein_position","BIOTYPE","IMPACT"}\
+    {print$0}' \
+    > ${maf}.missense.INFO.ANN
+done
+
+rm *_information
+
+
+
+#Load missense variant files into an array. 
+#We will use this array to find the number of missense variants per 
+#gene per sample. Also we will combine the unique genes from each 
+#sample into one list. Then count the number of unique genes, if 
+#the count is above 'n' we will save them and use them to find the
+#variants inside those genes for each sample.
+
+declare -a missense_maf_files=$(ls *.missense.INFO.ANN)
+
+for missenseFile in ${missense_maf_files[@]};
+do
+    cat < $missenseFile | cut -f1 | sed '1d' | \
+    sort -n | uniq -c | sort -nr | sed 's/^ \+//g' \
+    > ${missenseFile%%.INFO.ANN}.geneCount #Gives missense variant count per gene.
+    
+    cat < $missenseFile | cut -f1 | sed '1d' | sort -n | uniq >> tmpf
+done
+
+cat < tmpf | sort -n | uniq -c | sort -nr |cut -d' ' -f5- | \
+awk '{if($1==31)print $NF}' >> commonGenesMissense.txt #List of genes present in 31 samples.
+
+rm tmpf 
+
+declare -a missense_genes_array=$(cat < commonGenesMissense.txt)
+
+for missenseGene in ${missense_genes_array[@]};
+do
+    for missenseFile in ${missense_maf_files[@]};
+    do
+        grep $missenseGene $missenseFile | cut -f9,10,11 |\
+        awk -v awk_file=\>$missenseFile -F$'\t' 'BEGIN {print awk_file}{print$0}' \
+        >> ${missenseGene}.INFO.ANN.missense.variants
+    done
+done 
+
+
+
+#Load the files containing variants of genes affected by missense variants in > n samples.
+#Find count of each unique variant. Count would show the no. of samples that unique variant is in.
+
+declare -a missense_variant_uniq_count_array=$(ls | grep .INFO.ANN.missense.variants)
+
+for file in ${missense_variant_uniq_count_array[@]};
+do
+    cat < $file | grep -v "^>" | sort -n | uniq -c | sort -nr | \
+    sed 's/^ \+//g' > ${file}.count
+done

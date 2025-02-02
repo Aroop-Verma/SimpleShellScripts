@@ -1,0 +1,44 @@
+#!/bin/bash
+
+ref_path=/home/anupam/aroop/ICMR/samples/reference_ldonovani_genbank/GCA_000227135.2_ASM22713v2_genomic.fna
+
+declare -a vcf_array=$(ls *.vcf)
+
+for vcf in ${vcf_array[@]}; 
+do
+    
+    _basename=${vcf%%.genomic.vcf}
+    basename=${_basename##ReadGroup_}
+    echo $basename
+    
+
+    SelectVariantsVCF=${basename}.snp.vcf
+    gatk SelectVariants -R $ref_path -V $vcf -O $SelectVariantsVCF --select-type SNP
+    echo $SelectVariantsVCF
+    
+
+    GATKVariantFiltrationVCF=${basename}.marked_for_filter.snp.vcf
+    gatk VariantFiltration --variant $SelectVariantsVCF --output $GATKVariantFiltrationVCF \
+    -filter "QD < 2.0" --filter-name "QD2" \
+    -filter "QUAL < 30.0" --filter-name "QUAL30" \
+    -filter "SOR > 3.0" --filter-name "SOR3" \
+    -filter "FS > 60.0" --filter-name "FS60" \
+    -filter "MQ < 40.0" --filter-name "MQ40" \
+    -filter "MQRankSum < -12.5" --filter-name "MQRankSum-12.5" \
+    -filter "ReadPosRankSum < -8.0" --filter-name "ReadPosRankSum-8"
+    echo $GATKVariantFiltrationVCF
+
+    FilteredVCF=${basename}.hardfiltered.snp.vcf
+    gatk SelectVariants -R $ref_path -V $GATKVariantFiltrationVCF -O $FilteredVCF --exclude-filtered
+    echo $FilteredVCF
+
+    ~/Downloads/annovar.latest/annovar/table_annovar.pl \
+    $FilteredVCF ~/Downloads/annovar.latest/annovar/lddb/ \
+    -buildver LD --outfile ${basename}.myanno.vcf -remove -protocol refGene -operation g \
+    -nastring . --vcfinput 
+
+    cat < ${basename}.myanno.vcf.LD_multianno.txt > tmpfile 
+    rm ${basename}.myanno.vcf.LD_multianno.txt
+    cat < tmpfile | sed 's/gene-//g' > ${basename}.myanno.vcf.LD_multianno.txt
+
+done

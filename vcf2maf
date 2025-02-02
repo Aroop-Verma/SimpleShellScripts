@@ -1,0 +1,58 @@
+#!/bin/bash
+
+reference="/home/anupam/aroop/ICMR/samples/reference_ldonovani_genbank/GCA_000227135.2_ASM22713v2_genomic.fna"
+vcf_files_dir="./"
+declare -a vcfsArray=$( ls $vcf_files_dir | grep ReadGroup_ )
+
+
+for vcf in ${vcfsArray[@]};
+do
+    
+    vcf_basename=${vcf%%.genomic.vcf}
+    vcf_basename=${vcf_basename##ReadGroup_}
+    printf "${vcf_basename}\n"
+
+    gatk SelectVariants \
+    -R $reference \
+    -V $vcf_files_dir/$vcf \
+    -O ${vcf_basename}.snps \
+    --select-type SNP
+
+    gatk VariantFiltration \
+    --variant ${vcf_basename}.snps \
+    --output ${vcf_basename}.snps.marked \
+    -filter "QD < 2.0" --filter-name "QD2" \
+    -filter "QUAL < 30.0" --filter-name "QUAL30" \
+    -filter "SOR > 3.0" --filter-name "SOR3" \
+    -filter "FS > 60.0" --filter-name "FS60" \
+    -filter "MQ < 40.0" --filter-name "MQ40" \
+    -filter "MQRankSum < -12.5" --filter-name "MQRankSum-12.5" \
+    -filter "ReadPosRankSum < -8.0" --filter-name "ReadPosRankSum-8"
+
+
+    gatk SelectVariants \
+    -R $reference \
+    -V ${vcf_basename}.snps.marked \
+    -O ${vcf_basename}.snps.filter.seleted.vcf \
+    --exclude-filtered
+
+    java -jar ~/snpEff/snpEff.jar ann \
+    -i vcf \
+    -o vcf \
+    -stats ${vcf_basename}.html \
+   ldonoBPK282A ${vcf_basename}.snps.filter.seleted.vcf > ${vcf_basename}.snps.filtered.ann
+   
+
+    perl /home/anupam/Downloads/vcf2maf-main/vcf2maf.pl \
+    --ref-fasta=$reference \
+    --inhibit-vep \
+    --ncbi-build=ASM22713v2 \
+    --species=Leishmania_donovani \
+    --any-allele \
+    --input-vcf=${vcf_basename}.snps.filtered.ann \
+    --output-maf=${vcf_basename}.maf
+
+done 
+
+#    --filter-expression "QD < 2.0 || FS > 60.0 || SOR > 3.0 || MQ < 40.0 || MQRankSum < -12.5 || ReadPosRankSum < -8.0" \
+#    --filter-name "FAIL"

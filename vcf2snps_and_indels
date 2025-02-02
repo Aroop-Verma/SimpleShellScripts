@@ -1,0 +1,77 @@
+#!/bin/bash
+
+reference="/home/anupam/aroop/ICMR/samples/reference_ldonovani_genbank/GCA_000227135.2_ASM22713v2_genomic.fna"
+vcf_files_dir="./"
+declare -a vcfsArray=$( ls $vcf_files_dir | grep ReadGroup_ )
+
+
+for vcf in ${vcfsArray[@]};
+do
+    
+    vcf_basename=${vcf%%.genomic.vcf}
+    vcf_basename=${vcf_basename##ReadGroup_}
+    printf "${vcf_basename}\n"
+
+# snps
+#    gatk SelectVariants \
+#    -R $reference \
+#    -V $vcf_files_dir/$vcf \
+#    -O ${vcf_basename}.snps \
+#    --select-type SNP
+#
+#    gatk VariantFiltration \
+#    --variant ${vcf_basename}.snps \
+#    --output ${vcf_basename}.snps.marked \
+#    -filter "QD < 2.0" --filter-name "QD2" \
+#    -filter "QUAL < 30.0" --filter-name "QUAL30" \
+#    -filter "SOR > 3.0" --filter-name "SOR3" \
+#    -filter "FS > 60.0" --filter-name "FS60" \
+#    -filter "MQ < 40.0" --filter-name "MQ40" \
+#    -filter "MQRankSum < -12.5" --filter-name "MQRankSum-12.5" \
+#    -filter "ReadPosRankSum < -8.0" --filter-name "ReadPosRankSum-8"
+#
+#    gatk SelectVariants \
+#    -R $reference \
+#    -V ${vcf_basename}.snps.marked \
+#    -O ${vcf_basename}.filtered.snps.vcf \
+#    --exclude-filtered
+
+
+# indels
+    gatk SelectVariants \
+    -R $reference \
+    -V $vcf_files_dir/$vcf \
+    -O ${vcf_basename}.indels \
+    --select-type INDEL
+
+    gatk VariantFiltration \
+    --variant ${vcf_basename}.indels \
+    --output ${vcf_basename}.indels.marked \
+    -filter "QUAL < 30.0" --filter-name "QUAL30" \
+    -filter "FS > 200.0" --filter-name "FS200" \
+    -filter "ReadPosRankSum < -20.0" --filter-name "ReadPosRankSum-20"
+
+    gatk SelectVariants \
+    -R $reference \
+    -V ${vcf_basename}.indels.marked \
+    -O ${vcf_basename}.filtered.indels.vcf \
+    --exclude-filtered    
+
+
+    java -jar ~/snpEff/snpEff.jar ann \
+    -i vcf \
+    -o vcf \
+    -stats ${vcf_basename}.html \
+   ldonoBPK282A ${vcf_basename}.filtered.indels.vcf \
+   > ${vcf_basename}.indels.filtered.ann
+
+    perl /home/anupam/Downloads/vcf2maf-main/vcf2maf.pl \
+    --ref-fasta=$reference \
+    --inhibit-vep \
+    --ncbi-build=ASM22713v2 \
+    --species=Leishmania_donovani \
+    --any-allele \
+    --input-vcf=${vcf_basename}.indels.filtered.ann \
+    --output-maf=${vcf_basename}.maf
+
+done
