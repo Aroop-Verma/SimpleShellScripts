@@ -1,0 +1,27 @@
+#!/bin/bash
+
+
+declare -a vcf_array=$(ls | grep .vcf.gz | grep -v .tbi)
+
+for i in ${vcf_array[@]};
+do
+    vcftools --gzvcf $i --freq2 --out ${i%%.vcf.gz}_allele_frequency --max-alleles 2
+    vcftools --gzvcf $i --depth --out ${i%%.vcf.gz}_mean_depth_per_individual
+    vcftools --gzvcf $i --site-mean-depth --out ${i%%.vcf.gz}_mean_depth_per_site
+    vcftools --gzvcf $i --site-quality --out ${i%%.vcf.gz}_site_quality
+    vcftools --gzvcf $i --missing-indv --out ${i%%.vcf.gz}_missing_data_per_individual
+    vcftools --gzvcf $i --missing-site --out ${i%%.vcf.gz}_missing_data_per_site
+    vcftools --gzvcf $i --het --out ${i%%.vcf.gz}_heterozygosity
+done    
+
+project_name=$(pwd | awk -F/ '{print $NF}' | cut -d'_' -f1)
+
+mkdir ${project_name}_allele_frequency ${project_name}_mean_depth_per_individual ${project_name}_mean_depth_per_site ${project_name}_site_quality ${project_name}_missing_data_per_individual ${project_name}_missing_data_per_site ${project_name}_heterozygosity
+
+find . -name '*allele_frequency*' -type f | awk -F/ '{print $NF'} | xargs mv -t ${project_name}_allele_frequency/
+find . -name '*mean_depth_per_individual*' -type f | awk -F/ '{print $NF'} | xargs mv -t ${project_name}_mean_depth_per_individual/
+find . -name '*mean_depth_per_site*' -type f | awk -F/ '{print $NF'} | xargs mv -t ${project_name}_mean_depth_per_site/
+find . -name '*site_quality*' -type f | awk -F/ '{print $NF'} | xargs mv -t ${project_name}_site_quality/
+find . -name '*missing_data_per_individual*' -type f | awk -F/ '{print $NF'} | xargs mv -t ${project_name}_missing_data_per_individual
+find . -name '*missing_data_per_site*' -type f | awk -F/ '{print $NF'} | xargs mv -t ${project_name}_missing_data_per_site/
+find . -name '*heterozygosity*' -type f | awk -F/ '{print $NF'} | xargs mv -t ${project_name}_heterozygosity/

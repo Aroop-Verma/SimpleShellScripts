@@ -1,0 +1,34 @@
+#!/bin/bash
+
+# This script saves the list of genes ids with variants and matches them against a file 
+# which contains gene ids, gene name and protein sequence lengths and saves the results
+
+
+protein_information_file="/home/anupam/aroop/ICMR/samples/reference_ldonovani_genbank/accession.length.proteins.genbank"
+
+for dir in */;
+do
+    if [[ -d $dir ]]; then
+        cd $dir
+        cd snpvcfs
+        cd filteredvcf
+        cd annotatedvcfs
+        cd mafs
+        input_file=$(ls *.gene.vcf.snps.recode.vcf.ann.maf.gene.count.sorted)
+        output_file=${input_file%%.gene.vcf.snps.recode.vcf.ann.maf.gene.count.sorted}
+        declare -a gene_id_array=$(cat < $input_file | cut -f2)
+        for gene_id in ${gene_id_array[@]};
+        do
+        
+            gene_count=$(grep $gene_id $input_file | cut -f1)
+#            echo $gene_count
+            gene_info_record=$(grep $gene_id $protein_information_file | cut -f2- )
+#            echo $gene_info_record
+
+            echo -e "$gene_count\t$gene_id\t$gene_info_record" >> ${output_file}_protein_information
+        
+        done
+        
+        cd ../../../../..
+    fi    
+done

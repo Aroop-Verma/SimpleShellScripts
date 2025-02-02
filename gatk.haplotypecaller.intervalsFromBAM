@@ -1,0 +1,25 @@
+#!/bin/bash
+
+reference_seq="/home/anupam/aroop/ICMR/samples/reference_ldonovani_genbank/GCA_000227135.2_ASM22713v2_genomic.fna"
+interval_dir="/home/anupam/aroop/ICMR/samples/reference_ldonovani_genbank/"
+#target_dir="/home/anupam/aroop/ICMR/samples/india/bioprojects/PRJNA192928/SRR776448"
+
+function GATKHC
+{
+gatk --java-options "-Xmx12g" HaplotypeCaller -R $reference_seq -L $interval_dir/GCA_000227135.2_ASM22713v2_genomic.bed -I $inputvcf -O ${inputvcf%%.bam}.genomic.vcf
+gatk --java-options "-Xmx12g" HaplotypeCaller -R $reference_seq -L $interval_dir/GCA_000227135.2_ASM22713v2_gene.bed -I $inputvcf -O ${inputvcf%%.bam}.gene.vcf
+gatk --java-options "-Xmx12g" HaplotypeCaller -R $reference_seq -L $interval_dir/GCA_000227135.2_ASM22713v2_exon.bed -I $inputvcf -O ${inputvcf%%.bam}.exon.vcf
+gatk --java-options "-Xmx12g" HaplotypeCaller -R $reference_seq -L $interval_dir/GCA_000227135.2_ASM22713v2_cds.bed -I $inputvcf -O ${inputvcf%%.bam}.cds.vcf
+}
+
+for dir in */;
+do
+cd $dir 
+echo $PWD
+echo
+inputvcf=$(ls ReadGroup_*.bam)
+GATKHC
+cd ..
+echo
+echo
+done

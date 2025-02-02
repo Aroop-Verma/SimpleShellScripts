@@ -1,0 +1,55 @@
+#!/bin/bash
+
+interval_dir="/home/anupam/aroop/ICMR/samples/reference_ldonovani_genbank/"
+input_bam=$(ls ReadGroup*.bam)
+echo "input BAM name = $input_bam"
+output_removeSuffix=${input_bam%%.bam}
+output_bam=${output_removeSuffix##ReadGroup_}
+echo "output BAM name = $output_bam"
+echo $output_bam
+
+function SelectRegionsAndindex
+{
+echo "Making gene BAM"
+samtools view -L $interval_dir/GCA_000227135.2_ASM22713v2_gene.bed -b -o ${output_bam}_gene.bam $input_bam
+echo "Making cds BAM"
+samtools view -L $interval_dir/GCA_000227135.2_ASM22713v2_cds.bed -b -o ${output_bam}_cds.bam $input_bam
+echo "Making exon BAM"
+samtools view -L $interval_dir/GCA_000227135.2_ASM22713v2_exon.bed -b -o ${output_bam}_exon.bam $input_bam
+echo "Indexing . . . gene"
+samtools index -b ${output_bam}_gene.bam
+echo "Indexing . . . cds"
+samtools index -b ${output_bam}_cds.bam
+echo "Indexing . . . exon"
+samtools index -b ${output_bam}_exon.bam
+}
+
+echo "Executing . . . SelectRegionsAndIndex"
+SelectRegionsAndindex
+mkdir bams
+ls | grep $output_bam.*.bam | grep -v "ReadGroup_" | xargs mv -t bams/
+cd bams/
+echo "Inside BAMS directory"
+
+
+declare -a bam_array=("${output_bam}_gene.bam" "${output_bam}_cds.bam" "${output_bam}_exon.bam")
+
+for bam_file in ${bam_array[@]};
+do
+    samtools bedcov $interval_dir/GCA_000227135.2_ASM22713v2_genomic.bed \
+    $bam_file > ${bam_file}.SamtoolsBedCov.IntervalDepth
+    
+    samtools coverage $bam_file > ${bam_file}.SamtoolsCoverage.totalcoverage
+    
+    samtools coverage $bam_file | tail -n +2 | \
+    awk '{coveredbases+=$5;numbases+=$3}END{printf("Total coverage of the sample = %.2f\n", (coveredbases/numbases)*100)}' \
+    >> ${bam_file}.SamtoolsCoverage.percentageCoverage
+    
+    samtools depth $bam_file > ${bam_file}.SamtoolsDepth
+    
+    samtools depth $bam_file | \
+    awk '{sumofdepth+=$3}END{printf("Average Depth of Sample = %.2f\n" , sumofdepth/NR)}' \
+    >> ${bam_file}.SamtoolsDepth.averagedepth  
+done
+
+echo ". . . Done"

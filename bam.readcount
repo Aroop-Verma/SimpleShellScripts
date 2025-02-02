@@ -1,0 +1,23 @@
+#!/bin/bash
+
+
+for dir in */;
+do
+    if [[ -d $dir ]];then
+        echo $dir
+        cd $dir
+        rc1=$(samtools coverage ReadGroup*.bam | tail -n +2 | awk '{sum_of_reads+=$4}END{print sum_of_reads}')
+        echo $rc1
+        cd bams/
+        declare -a bam_array=$(ls *bam)
+
+        for bam in ${bam_array[@]};
+        do
+            rc=$(samtools coverage $bam | tail -n +2 | awk '{sum_of_reads+=$4}END{print sum_of_reads}')
+            echo $bam $rc 
+        done 
+        cd ..
+        cd ..
+        echo
+    fi    
+done

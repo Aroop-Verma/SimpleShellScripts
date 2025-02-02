@@ -1,0 +1,19 @@
+#!/bin/bash
+
+
+#	This script converts the genomic VCF into VCF file using gatk 'GenotypeGVCFs' tool
+#	Specify the path to reference sequence and bed file.
+ 
+reference_sequence=/home/anupam/aroop/ICMR/samples/reference_ldonovani_genbank/GCA_000227135.2_ASM22713v2_genomic.fna
+bed_file=/home/anupam/aroop/ICMR/samples/reference_ldonovani_genbank/GCA_000227135.2_ASM22713v2_genomic.bed
+
+
+declare -a g_vcfs=$(ls | grep -v ".tbi")
+echo -e "The Array contains the following elements:\n${g_vcfs[@]}"
+
+for i in ${g_vcfs[@]};
+do
+    tmp_var=${i%%.g.vcf.gz}.vcf.gz
+    echo $tmp_var
+    gatk --java-options "-Xmx12g" GenotypeGVCFs -R $reference_sequence -V $i -O /home/anupam/aroop/ICMR/samples/india/JoinGenotyping/PRJNA739251_individual_VCFs_dir/$tmp_var -L $bed_file
+done

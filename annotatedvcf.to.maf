@@ -1,0 +1,39 @@
+#!/bin/bash
+
+ref_path=/home/anupam/aroop/ICMR/samples/reference_ldonovani_genbank/GCA_000227135.2_ASM22713v2_genomic.fna
+html_output=/home/anupam/Nayan/Redone_VCF/effect_type_only_annotated_files/html_output_annotation_effect_only
+ann_output=/home/anupam/Nayan/Redone_VCF/effect_type_only_annotated_files/annotated_files_effect_only
+maf_output=/home/anupam/Nayan/Redone_VCF/effect_type_only_annotated_files/maf_files_effect_only
+
+mkdir $html_output
+mkdir $ann_output
+mkdir $maf_output
+
+declare -a snps_array=$(ls *_SNPs.vcf)
+
+for vcf in ${snps_array[@]};
+do
+
+	vcf_file_name=${vcf%%.vcf}
+	echo $vcf_file_name
+    
+	java -jar ~/snpEff/snpEff.jar \
+	ann -i vcf -o vcf \
+	-no-downstream \
+	-no-intergenic \
+	-no-intron \
+	-no-upstream \
+	-no-utr \
+	-stats $html_output/${vcf_file_name}.html \
+	ldonoBPK282A $vcf \
+	> $ann_output/${vcf_file_name}_ann_effect_type.vcf
+    
+	perl /home/anupam/Downloads/vcf2maf-main/vcf2maf.pl \
+	--ref-fasta=$ref_path \
+	--inhibit-vep \
+	--ncbi-build=ASM22713v2 \
+	--species=Leishmania_donovani \
+	--any-allele \
+	--input-vcf=$ann_output/${vcf_file_name}_ann_effect_type.vcf \
+	--output-maf=$maf_output/${vcf_file_name}.maf
+done

@@ -1,0 +1,40 @@
+#!/bin/bash
+
+#Define the path to your gene file
+#The file should cotain only one column
+
+gene_file="/home/anupam/aroop/ICMR/samples/india/bioprojects/genelistdir/genes.in.all.samples"
+
+#Define an array which saves the genes from gene_file var
+declare -a gene_tag_array=$(cat < $gene_file)
+
+#Define an array which saves annotated files 
+declare -a ANN_field_files_array=$(ls *.info)
+
+#Make directory to save output files
+mkdir common_genes_annotationfields_dir
+
+#for gene in ${gene_tag_array[@]};
+#do
+#    for file in ${missense_variants_files[@]};
+#    do
+#        cat < $file \
+#        | grep -v ^# | grep "$gene" |\
+#        | awk -F';' '{print$NF}' | cut -f1 \
+#        | sed 's/ANN=//' | cut -d',' --output-delimiter=$'\n' -f1- \
+#        | awk -v awk_file=\>$file -F$'\t' 'BEGIN {print awk_file}{print$0}' \
+#        >> ${gene}_ANN_fields_w_Variant_INFO
+#    done
+#done
+
+for gene in ${gene_tag_array[@]};
+do
+    for file in ${ANN_field_files_array[@]};
+    do
+        cat < $file | grep "$gene" | \
+        awk -v awk_file=\>$file -F$'\t' 'BEGIN {print awk_file}{print$0}' \
+        >> ${gene}_annotation_fields
+    done
+done
+
+ls *_annotation_fields | xargs mv -t common_genes_annotationfields_dir/

@@ -1,0 +1,11 @@
+#!/bin/bash
+
+declare -a InDelArray=$(ls | grep -v ".tbi" | grep .vcf.gz)
+echo ${InDelArray[@]}
+
+for InDel in ${InDelArray[@]};
+do
+    tmp_var_1=${InDel%%.vcf.gz}_raw_InDels.vcf
+    gatk SelectVariants -R ~/aroop/ICMR/samples/reference_ldonovani_genbank/GCA_000227135.2_ASM22713v2_genomic.fna -V $InDel -O $tmp_var_1 --xl-select-type SNP
+    bcftools stats $tmp_var_1 > ${tmp_var_1%%.vcf}_stats
+done

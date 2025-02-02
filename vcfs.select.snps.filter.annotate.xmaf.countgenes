@@ -1,0 +1,88 @@
+#!/bin/bash
+
+ref_path=/home/anupam/aroop/ICMR/samples/reference_ldonovani_genbank/GCA_000227135.2_ASM22713v2_genomic.fna
+
+
+for dir in */;
+do
+    if [[ -d $dir ]];then
+    
+    cd $dir
+    
+    declare -a vcf_array=$(ls ReadGroup_*.vcf)
+    for vcf in ${vcf_array[@]};
+    do
+        gatk SelectVariants -R "${ref_path}" -V $vcf -O ${vcf}.snps --select-type SNP
+    done
+
+
+
+    mkdir snpvcfs
+    ls *snps | xargs mv -t snpvcfs/
+    cd snpvcfs/
+
+
+    declare -a snp_vcf_array=$(ls *snps)
+    for snpvcf in ${snp_vcf_array[@]};
+    do
+        vcftools --vcf $snpvcf --maf 0.1 --minDP 5 --minQ 25 --recode --out filtered.vcf.$snpvcf
+    done
+
+
+
+    mkdir filteredvcf 
+    ls filtered*.recode.vcf | xargs mv -t filteredvcf/
+    cd filteredvcf/
+
+
+    declare -a filtered_vcf_array=$(ls filtered*.recode.vcf)
+    for filteredvcf in ${filtered_vcf_array[@]};
+    do
+        java -jar ~/snpEff/snpEff.jar \
+	    ann -i vcf -o vcf \
+	    -stats ${filteredvcf}.html \
+	    ldonoBPK282A $filteredvcf \
+	    > ${filteredvcf}.ann
+    done
+
+
+    mkdir annotatedvcfs
+    ls filtered*.ann | xargs mv -t annotatedvcfs/
+    ls *.txt | xargs mv -t annotatedvcfs/
+    ls *.html | xargs mv -t annotatedvcfs/
+    cd annotatedvcfs/
+
+
+    declare -a annotated_vcf_array=$(ls filtered*.ann)
+    for annvcf in ${annotated_vcf_array[@]};
+    do
+        perl /home/anupam/Downloads/vcf2maf-main/vcf2maf.pl \
+	    --ref-fasta=$ref_path \
+	    --inhibit-vep \
+	    --ncbi-build=ASM22713v2 \
+	    --species=Leishmania_donovani \
+	    --any-allele \
+	    --input-vcf=$annvcf \
+	    --output-maf=${annvcf}.maf
+    done
+    
+    
+    
+    mkdir mafs
+    ls *.maf | xargs mv -t mafs/
+    
+    cd mafs/
+    declare -a maf_array=$(ls *maf)
+    for maf in ${maf_array[@]};
+    do
+        maf_name=${maf##filtered.vcf.ReadGroup_}
+        cat < $maf |\
+         cut -d$'\t' -f1 | tail -n +3 | uniq -c | sort -n | cut -d' ' -f6,7- |\
+         awk '{print $1,$2,$3}' | tr ' ' '\t' | sort -nr | less \
+         > ${maf_name}.gene.count.sorted
+    done
+
+    cd ../../../../..
+    
+    fi
+done

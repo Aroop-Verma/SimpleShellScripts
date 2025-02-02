@@ -1,0 +1,25 @@
+#!/bin/bash
+
+# Extract records with missense_mutation from MAF files
+
+declare -a mafs_array=$(ls *.maf)
+
+for maf_file in ${mafs_array[@]};
+do
+    maf_name=${maf_file%%.maf}
+    echo "Setting Maf file name to $maf_name"
+    cat < $maf_file | grep "Missense_Mutation" |\
+    cut --output-delimiter=$'\t' \
+    -f1,5-7,9-10,12-13,35,36,51,52-54,64,93 \
+    > ${maf_name}_missense_variant_information
+
+    cat < ${maf_name}_missense_variant_information \
+    | awk -F$'\t' \
+    'BEGIN {print "Hugo_Symbol","Chromosome","Start_Position","End_Position","Variant_Classification","Variant_Type","Reference","Alternate","HGVSc","HGVSp","Consequence","cDNA_position","CDS_position","Protein_position","BIOTYPE","IMPACT"}\
+    {print$0}' \
+    > ${maf_file%%.maf}.missense.INFO.ANN
+done
+
+rm *_information
+
+

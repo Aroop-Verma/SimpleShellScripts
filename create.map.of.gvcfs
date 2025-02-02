@@ -1,0 +1,13 @@
+#!/bin/bash
+
+declare -a vcfs=$(ls | grep -v tbi)
+
+present_dir=$(pwd)
+echo "PWD:$present_dir"s
+
+for vcf in ${vcfs[@]};
+do
+    echo "current sample: echo $vcf";
+    sample=$(bcftools query -l $vcf);
+    echo -e "$sample\t$present_dir/$vcf" >> samples_for_gdbi
+done

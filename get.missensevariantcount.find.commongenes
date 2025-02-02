@@ -1,0 +1,14 @@
+#!/bin/bash
+
+declare -a missense_variant_files=$(ls *_missense_variants_only)
+
+for file in ${missense_variant_files[@]};
+do
+    gene_count=$(cat < $file | cut -f1 | sed '1d' | wc -l) 
+    echo -e "$file\t$gene_count" >> missense_information_per_sample
+    cat < $file | cut -f1 | sed '1d' | uniq -c | sort -nr > ${file%%_missense_variants_only}_missense_variant_affected_unique
+    cat < ${file%%_missense_variants_only}_missense_variant_affected_unique \
+    |awk -F$'\t' 'BEGIN {print "Count","Gene_tag"}{print$0}' > ${file%%_missense_variants_only}_missense_variants_gene_counts
+done
+
+rm *_missense_variant_affected_unique

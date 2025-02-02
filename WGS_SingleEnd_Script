@@ -1,0 +1,194 @@
+#!/bin/bash
+
+#########################################################################################################################################################################################
+
+
+#	Modify the RefSeq Variable to the path to your reference sequence before running the script.
+
+Ref_Seq="/home/anupam/aroop/ICMR/samples/reference_ldonovani_genbank/GCA_000227135.2_ASM22713v2_genomic.fna"
+
+
+#   Change the Value of Output_directory to the path of your Output directory for VCF files.
+
+Output_directory="/home/anupam/aroop/ICMR/samples/india/HaplotypeCaller/PRJNA70677"
+
+
+##########################################################################################################################################################################################
+
+
+#   defining Trimmomatic function to catch input .gz files 
+#   and using trimmomatic on them
+
+#   In the Trimmomatic function; there are two variables, head_crop and crop
+#   which correspond to HEADCROP and CROP options of trimmomatic command line 
+#   respectively. 
+#   Change their value as per your data.
+
+function trimmomatic
+{
+
+#   List files with gz extension and save in a variable
+input_trimmomatic=$(ls | grep ".gz")
+echo "Input for Trimmomatic : $input_trimmomatic" 
+
+#   list files with fastq.gz extension, save in a variable, 
+#   match "fastq.gz" pattern from the end, remove it and save in a variable 
+base_name=$(ls | grep ".fastq.gz")
+base_name=${base_name%%.fastq.gz}
+echo $base_name
+
+output_trimmomatic=${base_name}_trimmed.fastq.gz
+echo "Output for Trimmomatic: $output_trimmomatic"
+
+}
+
+
+
+#   defining fastqc function to work on trimmed files generated from trimmomatic
+
+function fastqc_trimmed_reads
+{
+
+#   list files with _trimmed.fastq.gz extensiona and save in variable
+input_trimmed_reads=$(ls | grep "_trimmed.fastq.gz")
+echo "FastQC will Quality check $input_trimmed_reads"
+
+}
+
+
+
+#   defining alignment function to generate Sequence Alignment MAP file
+
+function alignment
+{
+
+echo "BWA mem starting, Alignment Initiated"
+bwa mem -t 10 -M $Ref_Seq $input_trimmed_reads > ${base_name}_aligned.sam
+echo
+echo "----Sorting Sequence Alignment Map File----"
+java -jar /home/anupam/Downloads/picard.jar SortSam -I *_aligned.sam -O ${base_name}_aligned_sorted.sam -SORT_ORDER coordinate
+echo
+echo "----Calculating Alignment Summary Metrics----"
+java -jar /home/anupam/Downloads/picard.jar CollectAlignmentSummaryMetrics -R $Ref_Seq -I *_aligned.sam -O ${base_name}_AlignmentSummaryMetrics
+echo
+echo "----Marking Duplicates----"
+java -jar /home/anupam/Downloads/picard.jar MarkDuplicates -I *_aligned_sorted.sam -O ${base_name}_aligned_sorted_duplicate_marked.sam -M ${base_name}_duplicate_metrics
+echo
+echo "----Converting SAM to BAM----"
+java -jar /home/anupam/Downloads/picard.jar SamFormatConverter -I *_aligned_sorted_duplicate_marked.sam -O ${base_name}.bam
+echo
+
+}
+
+
+
+#   defining samtools stats function to generate various statistics for SAM file
+
+function samtools_stats
+{
+
+echo "------------------Initializing samtools function--------------------"
+samtools coverage *_aligned_sorted_duplicate_marked.sam > ${base_name}_coverage_statistics
+samtools depth *_aligned_sorted_duplicate_marked.sam > ${base_name}_depth_statistics
+samtools flagstat *_aligned_sorted_duplicate_marked.sam > ${base_name}_flagstats
+rm *.sam
+echo "Done, removing SAM files"
+
+}
+
+#   defining function for addition of Read Groups to add BAM file with read groups
+
+function Add_Replace_Read_Group
+{
+
+touch Read_Group_info.txt
+RGSM_var=${base_name}
+
+#   Modify these variables according to your sample's meta data
+
+RGLB_var=Single
+RGPL_var=Platform
+RGPU_var=Unit
+
+echo -e "RGSM:$RGSM_var\nRGLB:$RGLB_var\nRGPL:$RGPL_var\nRGPU:$RGPU_var" >> Read_Group_info.txt
+
+#   Open text file, capture and store different values in 
+RGLB_value=$(cat < Read_Group_info.txt | grep RGLB | cut -d":" -f2)
+echo "Read Group Library: $RGLB_value"
+
+RGPL_value=$(cat < Read_Group_info.txt | grep RGPL | cut -d":" -f2)
+echo "Read Group Platform: $RGPL_value"
+
+RGPU_value=$(cat < Read_Group_info.txt | grep RGPU | cut -d":" -f2)
+echo "Read Group Platform Unit: $RGPU_value"
+
+RGSM_value=$(cat < Read_Group_info.txt | grep RGSM | cut -d":" -f2)
+echo "Read Group Sample: $RGSM_value"
+
+BAM=$(ls | grep bam)
+BAMwithRG="ReadGroup_${base_name}.bam"
+
+echo "Executing AddOrReplaceGroups . . . ."
+java -jar /home/anupam/Downloads/picard.jar AddOrReplaceReadGroups -I $BAM -O $BAMwithRG -RGLB $RGLB_value -RGPL $RGPL_value -RGPU $RGPU_value -RGSM $RGSM_value
+
+
+}
+
+#   Defining function for Variant Calling using Haplotype Caller of Genome Analysis ToolKit
+
+function Variant_Call_GATK
+{
+
+read_group_bam=$(ls | grep ReadGroup | grep bam)
+echo $read_group_bam
+
+g_vcf_name=${base_name}.g.vcf.gz
+echo $g_vcf_name
+
+Output_destination="$Output_directory/$g_vcf_name"
+echo $Output_destination
+
+source gatk BuildBamIndex -I $read_group_bam
+source gatk --java-options "-Xmx8g" HaplotypeCaller -R $Ref_Seq -I $read_group_bam -O $Output_destination -ERC GVCF
+
+}
+
+# Variable has been set to iterate over in a loop and be saved in a new variable for remembering sample number 
+declare -i sample_number=0
+
+for dir in */;
+do
+    if [ -d $dir ]; then
+        builtin cd $dir
+        echo "Executing Trimmomatic Function"
+        trimmomatic
+        java -jar /home/anupam/Downloads/Trimmomatic-0.39/trimmomatic-0.39.jar SE -threads 12 $input_trimmomatic $output_trimmomatic ILLUMINACLIP:/home/anupam/Downloads/Trimmomatic-0.39/adapters/TruSeq3-SE.fa:2:3:10 TRAILING:3 SLIDINGWINDOW:4:20 MINLEN:36
+        echo
+
+        echo "Executing FastQC function on Trimmed reads"
+        fastqc_trimmed_reads
+        fastqc $input_trimmed_reads
+        echo
+
+        echo "Executing Alignment function on Trimmed reads after Quality check"
+        alignment
+        echo
+
+        echo "Executing SAMtools"
+        samtools_stats
+        echo
+
+        echo "Executing Addition of Read Groups"
+        Add_Replace_Read_Group
+        echo
+        
+        echo "Calling variants using GATK HaplotypeCaller"
+        Variant_Call_GATK
+        echo
+        builtin cd ..
+        
+    fi
+done
+
+date +%T
+echo "Done"

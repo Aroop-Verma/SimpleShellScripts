@@ -1,0 +1,18 @@
+#!/bin/bash
+
+
+ann_output=/home/anupam/Nayan/Redone_VCF/annotated_files
+declare -a snps_array=$(ls *_SNPs.vcf)
+
+for vcf in ${snps_array[@]};
+do
+
+	vcf_file_name=${vcf%%.vcf}
+	echo $vcf_file_name
+    
+	java -jar ~/snpEff/snpEff.jar \
+	ann -i vcf -o vcf \
+	ldonoBPK282A $vcf \
+	> $ann_output/${vcf_file_name}_ann.vcf
+    done
+    
